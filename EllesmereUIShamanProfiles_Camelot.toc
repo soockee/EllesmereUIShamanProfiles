@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: EllesmereUI Shaman Profiles
+## Notes: Selects healer and DPS profiles from your active Shaman talents.
+## Dependencies: EllesmereUI, EllesmereUIRaidFrames
+
+ShamanProfiles.lua
+ShamanBars.lua
+ShamanTransfer.lua
+ShamanItems.lua
+ShamanKeyboard.lua
