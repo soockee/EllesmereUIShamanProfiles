@@ -133,6 +133,90 @@ local function UpdateUtilityBar(preset)
     Put(71, "spell|20549|spell|")
 end
 
+-- what an action is, for "is it still somewhere on the bars": spell name, else macro label, else the action
+local function PresenceKey(action)
+    if not action or action == "" then return end
+    local kind, id, subtype, text = action:match("^([^|]+)|([^|]*)|([^|]*)|(.*)$")
+    local spellID = (kind == "spell" or subtype == "spell") and tonumber(id)
+    local spell = spellID and C_Spell.GetSpellName(spellID)
+    return spell or (kind == "macro" and text ~= "" and text) or action
+end
+
+-- Layout 6 (one structure for all specs):
+-- shared + plan slots overwrite the saved preset, old keys are emptied, anything displaced that is no
+-- longer on the bars is parked on Bar 7, then Bar 6, and Bar 6/7 copies of something now on a key go.
+local function UpdateLayout(preset, spec)
+    local plan = ns.BarPlans[spec]
+    local new, touched = {}, {}
+    for slot, action in pairs(preset) do new[slot] = action end
+    local function Set(slot, action)
+        new[slot] = action
+        touched[#touched+1] = slot
+    end
+    for _, entries in ipairs({ ns.BarShared, plan }) do
+        for slot, entry in pairs(entries) do
+            if not entry[3] then
+                Set(slot, entry[1] == 0 and ("macro|1||" .. entry[4])
+                    or entry[4] and ("macro|" .. entry[1] .. "|spell|" .. entry[4])
+                    or ("spell|" .. entry[1] .. "|spell|"))
+            end
+        end
+    end
+    for _, slot in ipairs(ns.LayoutClear[spec]) do
+        if not plan[slot] and not ns.BarShared[slot] then Set(slot, "") end
+    end
+    local present = {}
+    for _, action in pairs(new) do
+        local key = PresenceKey(action)
+        if key then present[key] = true end
+    end
+    table.sort(touched)
+    local parked, removed = {}, {}
+    for _, slot in ipairs(touched) do
+        local old = preset[slot]
+        local key = PresenceKey(old)
+        if key and not present[key] then
+            present[key] = true
+            local spot
+            for s = 157, 168 do if not spot and (not new[s] or new[s] == "") then spot = s end end
+            for s = 145, 156 do if not spot and (not new[s] or new[s] == "") then spot = s end end
+            local itemID = tonumber(old:match("^item|(%d+)|"))
+            local label = itemID and (C_Item.GetItemNameByID(itemID) or ("item " .. itemID)) or key
+            if spot then
+                new[spot] = Normalize(old) or old
+                parked[#parked+1] = label
+            else
+                print("Shaman bars: " .. spec .. ": no free Bar 6/7 slot for " .. label .. "; it left the bars.")
+            end
+        end
+    end
+    local onKeys = {}
+    for slot = 1, 72 do
+        local key = PresenceKey(new[slot])
+        if key then onKeys[key] = true end
+    end
+    for slot = 145, 168 do
+        local key = PresenceKey(new[slot])
+        if key and onKeys[key] then
+            new[slot] = ""
+            removed[#removed+1] = key
+        end
+    end
+    for slot, action in pairs(new) do preset[slot] = action end
+    -- layout 5 pinned rank 1 on plain spell keys; the rank variants are macros now
+    local ranks = EllesmereUIDB._shamanSpellRanks
+    local pins = ranks and ranks[UnitGUID("player")] and ranks[UnitGUID("player")][spec]
+    for slot, id in pairs(pins or {}) do
+        if id == 8056 or id == 1064 then pins[slot] = nil end
+    end
+    if #parked > 0 then
+        print("Shaman bars: " .. spec .. " preset updated; moved to Bar 7/6: " .. table.concat(parked, ", ") .. ".")
+    end
+    if #removed > 0 then
+        print("Shaman bars: " .. spec .. ": removed Bar 6/7 copies of keys: " .. table.concat(removed, ", ") .. ".")
+    end
+end
+
 function ns.GetSavedBarPreset(spec)
     local saved = EllesmereUIDB._shamanSavedBarPresets
     local character = saved and saved[UnitGUID("player")]
@@ -174,6 +258,25 @@ function ns.GetSavedBarPreset(spec)
     if elemental and not character._elementalFocusMacro then
         elemental[12] = "macro|1||EUI Focus" -- Mouse 4
         character._elementalFocusMacro = true
+    end
+    if character and not character._layout6 then
+        for presetSpec in pairs(validSpecs) do
+            if character[presetSpec] then UpdateLayout(character[presetSpec], presetSpec) end
+        end
+        character._layout6 = true
+    end
+    -- Restoration key 2 held a copy of R (Lesser Healing Wave)
+    local resto = character and character.Restoration
+    if resto and not character._restoKey2 then
+        if resto[38] == "macro|10468|spell|EUI Lesser Heal" then resto[38] = "" end
+        character._restoKey2 = true
+    end
+    if character and not character._mountMacro then
+        for presetSpec in pairs(validSpecs) do
+            local preset = character[presetSpec]
+            if preset and (not preset[60] or preset[60] == "") then preset[60] = "macro|1||EUI Mount" end
+        end
+        character._mountMacro = true
     end
     return character and character[spec]
 end
@@ -471,12 +574,13 @@ function ns.ApplyBarLayout(targets, label, macros, park)
                     move[3], action = placed, placed
                 end
             end
-            if not GetCursorInfo() and placed == action then
-                done[#done+1] = move
-                if move.lost then lost[#lost+1] = ActionLabel(move[6]) .. " (slot " .. to .. ")" end
-            elseif placed ~= "" and not GetCursorInfo() and (not from or ReadSlot(from) == "") then
-                done[#done+1] = { from, to, placed }
-            end
+        end
+        -- covers clears too: a cleared key counts as done
+        if placed and not GetCursorInfo() and placed == action then
+            done[#done+1] = move
+            if move.lost then lost[#lost+1] = ActionLabel(move[6]) .. " (slot " .. to .. ")" end
+        elseif action ~= "" and placed and placed ~= "" and not GetCursorInfo() and (not from or ReadSlot(from) == "") then
+            done[#done+1] = { from, to, placed }
         end
         if done[#done] ~= move then
             -- skip this key and keep going: one refused key must not undo the whole layout

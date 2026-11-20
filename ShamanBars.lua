@@ -1,61 +1,88 @@
 local _, ns = ...
 if not ns.ActiveTree then return end
+-- One structure for all specs (layout 6). Fields: spell id, name, user mouseover macro wanted,
+-- addon macro label (see addonMacros / accountMacros). Rank variants are their own named macros.
+-- Keys: Q-G rotation · C interrupt · X purge · Shift+Q/E/R offensive cooldowns · 1-5 healing area
+-- · Shift+1-5 defensives (yours) · Z column totem control · X column other Call sets · G column totems
+-- dropped at your feet · V column + Mouse 5 counter totems · Shift+Mouse 4 shield · Bar 6/7 low frequency.
 local shared = {
-    [7] = { 66842, "Call of the Elements" },        -- Z
-    [8] = { 8012, "Purge", true },                  -- X
-    [9] = { 10414, "Earth Shock" },                 -- C
-    [28] = { 131, "Water Breathing", true },       -- Alt+A
-    [29] = { 546, "Water Walking", true },           -- Alt+S
-    [55] = { 437009, "Totemic Call" },              -- Ctrl+Z
-    [56] = { 2645, "Ghost Wolf" },                  -- Ctrl+X
+    [6] = { 10438, "Searing Totem" },               -- G: under Fire Nova, single-target combo
+    [65] = { 10587, "Magma Totem" },                -- Shift+T: Fire Nova's key, AoE combo
     [66] = { 2484, "Earthbind Totem" },             -- Shift+G
+    [54] = { 10463, "Healing Stream Totem" },       -- Ctrl+G
+    [7] = { 66842, "Call of the Elements" },        -- Z: main set
+    [67] = { 36936, "Totemic Recall" },             -- Shift+Z
+    [55] = { 437009, "Totemic Call" },              -- Ctrl+Z
+    [68] = { 66843, "Call of the Ancestors" },      -- Shift+X: other sets, same modifiers as the Z column
+    [56] = { 66844, "Call of the Spirits" },        -- Ctrl+X
+    [8] = { 8012, "Purge", false, "EUI Purge" },    -- X: mouseover, else target
+    [9] = { 10414, "Earth Shock", false, "EUI Focus Shock" }, -- C: focus interrupt, rank 1
+    [12] = { 0, "Set Focus", false, "EUI Focus" },  -- Mouse 4: focus mouseover, else target (for C)
+    -- counter totems: they answer what the enemy does; buff totems come from the Call sets
+    [10] = { 8143, "Tremor Totem" },                -- V: fear / sleep / charm
+    [70] = { 8166, "Poison Cleansing Totem" },      -- Shift+V
+    [58] = { 8170, "Disease Cleansing Totem" },     -- Ctrl+V
+    [11] = { 8177, "Grounding Totem" },             -- Mouse 5: eat an enemy cast
+    [57] = { 2645, "Ghost Wolf" },                  -- Ctrl+C
+    [60] = { 0, "Mount", false, "EUI Mount" },      -- Ctrl+Mouse 4: random favorite mount
+    -- healing area (mouseover, else friendly target, else you)
+    [37] = { 25357, "Healing Wave", false, "EUI Heal Wave" },        -- 1
+    [39] = { 526, "Cure Poison", false, "EUI Cure Poison" },         -- 3
+    [40] = { 2870, "Cure Disease", false, "EUI Cure Disease" },      -- 4
+    [41] = { 10623, "Chain Heal", false, "EUI Chain Heal" },         -- 5
+    [145] = { 131, "Water Breathing", false, "EUI Water Breath" },   -- Bar 6
+    [146] = { 546, "Water Walking", false, "EUI Water Walk" },       -- Bar 6
 }
 local plans = {
     Restoration = {
-        [1] = { 25357, "Healing Wave", true },         -- Q
-        [2] = { 1239243, "Riptide", true },            -- E
-        [3] = { 10468, "Lesser Healing Wave", true },  -- R
-        [4] = { 10623, "Chain Heal", true },           -- T
+        [1] = { 25357, "Healing Wave", false, "EUI Heal Wave" },       -- Q: highest rank
+        [2] = { 1239243, "Riptide", false, "EUI Riptide" },            -- E
+        [3] = { 10468, "Lesser Healing Wave", false, "EUI Lesser Heal" }, -- R
+        [4] = { 10623, "Chain Heal", false, "EUI Chain Heal" },        -- T: highest rank
         [5] = { 15208, "Lightning Bolt" },             -- F
-        [31] = { 10605, "Chain Lightning" },           -- Alt+Q
-        [32] = { 29228, "Flame Shock" },               -- Alt+E
-        [42] = { 16188, "Nature's Swiftness" },        -- Shift+1
-        [53] = { 408510, "Water Shield" },             -- Ctrl+T
+        [64] = { 10605, "Chain Lightning" },           -- Shift+F
+        -- shocks sit under Elemental's E / R, behind Ctrl
+        [51] = { 10473, "Frost Shock", false, "EUI Frost Shock" },     -- Ctrl+E: rank 1 slow
+        [52] = { 29228, "Flame Shock", false, "EUI Flame Shock" },     -- Ctrl+R
+        -- healing area holds the cheap ranks; Q / T keep the highest
+        [37] = { 25357, "Healing Wave", false, "EUI HW Rank 7" },      -- 1: half the heal for less mana
+        [41] = { 10623, "Chain Heal", false, "EUI CH Rank 1" },        -- 5: cheapest group heal
+        -- 2 stays empty: Lesser Healing Wave is already on R
         [61] = { 17354, "Mana Tide Totem" },           -- Shift+Q
+        [62] = { 16188, "Nature's Swiftness" },        -- Shift+E
+        [72] = { 408510, "Water Shield" },             -- Shift+Mouse 4
     },
     Enhancement = {
         [1] = { 17364, "Stormstrike" },                -- Q
-        [2] = { 29228, "Flame Shock" },                -- E
-        [3] = { 15208, "Lightning Bolt" },             -- R
-        [4] = { 408345, "Fire Nova" },                 -- T
-        [5] = { 10605, "Chain Lightning" },             -- F
-        [53] = { 10432, "Lightning Shield" },          -- Ctrl+T
-        [61] = { 425336, "Rage of the Farseer" },       -- Shift+Q
+        [2] = { 10473, "Frost Shock", false, "EUI Frost Shock" },      -- E: rank 1 slow / kite
+        [3] = { 29228, "Flame Shock", false, "EUI Flame Shock" },      -- R: mouseover, else target
+        [4] = { 408344, "Fire Nova" },                 -- T
+        [5] = { 10605, "Chain Lightning" },            -- F
+        [64] = { 15208, "Lightning Bolt" },            -- Shift+F
+        [38] = { 10468, "Lesser Healing Wave", false, "EUI Lesser Heal" }, -- 2: healing area
+        [61] = { 425336, "Rage of the Farseer", false, "EUI Enh Burst" }, -- Shift+Q: trinket + racial + Farseer
+        [72] = { 10432, "Lightning Shield" },          -- Shift+Mouse 4
     },
     -- WoW Forever (Icy Veins / ConquestCapped, Nov 2026): ST Searing Totem > Flame Shock > Lightning Mastery
     -- > Chain Lightning (Clearcasting) > Lightning Bolt; AoE Magma Totem > Chain Lightning > Fire Nova.
-    -- 4th field: macro the addon creates (see addonMacros); false keeps the "user mouseover macro" flag off.
     Elemental = {
         [1] = { 15208, "Lightning Bolt" },             -- Q
-        [2] = { 10473, "Frost Shock" },                -- E: slow / kite
-        [3] = { 29228, "Flame Shock", false, "EUI Flame Shock" }, -- R: mouseover, else target
+        [2] = { 10473, "Frost Shock", false, "EUI Frost Shock" },      -- E: rank 1 slow / kite
+        [3] = { 29228, "Flame Shock", false, "EUI Flame Shock" },      -- R: mouseover, else target
         [4] = { 408345, "Fire Nova" },                 -- T
         [5] = { 10605, "Chain Lightning" },            -- F
-        [9] = { 10414, "Earth Shock", false, "EUI Focus Shock" }, -- C: focus interrupt
-        [6] = { 10438, "Searing Totem" },              -- G: under Fire Nova, single-target combo
-        [65] = { 10587, "Magma Totem" },               -- Shift+T: Fire Nova's key, AoE combo
-        -- reactive totems on the quickest free keys; V family = cleansing (Ctrl+V Disease stays)
-        [11] = { 8177, "Grounding Totem" },            -- Mouse 5: eat an enemy cast
-        [12] = { 0, "Set Focus", false, "EUI Focus" }, -- Mouse 4: focus mouseover, else target (for C)
-        [10] = { 8143, "Tremor Totem" },               -- V: fear / sleep / charm
-        [70] = { 8166, "Poison Cleansing Totem" },     -- Shift+V
-        -- buff sets (Z = Call of the Elements)
-        [68] = { 66843, "Call of the Ancestors" },     -- Shift+X
-        [57] = { 66844, "Call of the Spirits" },       -- Ctrl+C
-        [53] = { 10432, "Lightning Shield" },          -- Ctrl+T (Water Shield is a Restoration talent on Forever)
+        [38] = { 10468, "Lesser Healing Wave", false, "EUI Lesser Heal" }, -- 2: healing area
         [61] = { 16166, "Lightning Mastery", false, "EUI Burst" }, -- Shift+Q: trinket + racial + Lightning Mastery
+        [72] = { 10432, "Lightning Shield" },          -- Shift+Mouse 4 (Water Shield is a Restoration talent)
     },
 }
+-- old keys the layout empties (single buff totems leave keys; moved spells leave their old key)
+local layoutClear = {
+    Elemental = { 25, 26, 27, 52, 53, 60, 62, 64, 69, 147, 148 },
+    Enhancement = { 25, 26, 27, 51, 52, 53, 60, 62, 69, 147, 148 },
+    Restoration = { 25, 26, 27, 31, 32, 38, 53, 60, 69, 147, 148 }, -- 38: key 2 would copy R
+}
+ns.BarShared, ns.LayoutClear = shared, layoutClear
 ns.BarPlans = plans
 local undoPreset, lastPreset = {}
 
@@ -159,23 +186,39 @@ function ns.RunTotemCommand()
 end
 
 -- Character macros created on apply; %s is the client's spell name.
+local help = "#showtooltip %s\n/cast [@mouseover,help,nodead][help,nodead][@player] %s"
 local addonMacros = {
     ["EUI Flame Shock"] = "#showtooltip %s\n/cast [@mouseover,harm,nodead][] %s",
-    ["EUI Focus Shock"] = "#showtooltip %s\n/cast [@focus,harm,nodead][] %s",
+    ["EUI Frost Shock"] = "#showtooltip %s(Rank 1)\n/cast [@mouseover,harm,nodead][] %s(Rank 1)",
+    ["EUI Focus Shock"] = "#showtooltip %s(Rank 1)\n/cast [@focus,harm,nodead][] %s(Rank 1)",
+    ["EUI HW Rank 7"] = "#showtooltip %s(Rank 7)\n/cast [@mouseover,help,nodead][help,nodead][@player] %s(Rank 7)",
+    ["EUI CH Rank 1"] = "#showtooltip %s(Rank 1)\n/cast [@mouseover,help,nodead][help,nodead][@player] %s(Rank 1)",
     ["EUI Burst"] = "#showtooltip %s\n/use 13\n%s/cast %s",
+    ["EUI Enh Burst"] = "#showtooltip %s\n/use 13\n%s/cast %s",
     -- no spell: plan entries with spell id 0 use it as is
     ["EUI Focus"] = "/focus [@mouseover,exists,nodead][]",
+    -- random favorite mount (all mounts if none is a favorite); dismounts when mounted, leaves Ghost Wolf
+    ["EUI Mount"] = C_MountJournal and C_MountJournal.SummonByID
+        and "/cancelform [form]\n/run if IsMounted() then Dismount() else C_MountJournal.SummonByID(0) end"
+        or "/cancelform [form]\n/dismount [mounted]\n/cast [nomounted] White Kodo",
 }
+-- Account macros: mouseover, else friendly target, else yourself (Purge: else hostile target)
+local accountMacros = {
+    ["EUI Heal Wave"] = help, ["EUI Lesser Heal"] = help, ["EUI Chain Heal"] = help, ["EUI Riptide"] = help,
+    ["EUI Cure Poison"] = help, ["EUI Cure Disease"] = help, ["EUI Water Breath"] = help, ["EUI Water Walk"] = help,
+    ["EUI Purge"] = "#showtooltip %s\n/cast [@mouseover,harm,nodead][harm,nodead] %s",
+}
+local burstMacros = { ["EUI Burst"] = true, ["EUI Enh Burst"] = true }
 local racials = { 20572, 33697, 33702, 20554, 26296, 26297 } -- Blood Fury / Berserking variants
 
-function ns.IsAddonMacro(label) return addonMacros[label] ~= nil end
+function ns.IsAddonMacro(label) return addonMacros[label] ~= nil or accountMacros[label] ~= nil end
 
 function ns.EnsureAddonMacro(label, spell, learned)
     local index = GetMacroIndexByName(label)
-    if index and index > 0 then return index end
-    if InCombatLockdown() then return end
+    if InCombatLockdown() then return index and index > 0 and index or nil end
+    local account = accountMacros[label] ~= nil
     local body
-    if label == "EUI Burst" then
+    if burstMacros[label] then
         local extra = ""
         for _, id in ipairs(racials) do
             local racial = C_Spell.GetSpellName(id)
@@ -185,11 +228,21 @@ function ns.EnsureAddonMacro(label, spell, learned)
         end
         body = addonMacros[label]:format(spell, extra, spell)
     else
-        body = addonMacros[label]:format(spell, spell)
+        body = (addonMacros[label] or accountMacros[label]):format(spell, spell)
     end
-    local ok, created = pcall(CreateMacro, label, 134400, body, true)
+    if index and index > 0 then
+        -- keep our macros current (e.g. the rank 1 interrupt); other account macros are never touched
+        local _, _, old = GetMacroInfo(index)
+        if (account or index > (GetNumMacros())) and old and strtrim(old) ~= body then
+            local ok, edited = pcall(EditMacro, index, nil, nil, body)
+            if ok and edited then return edited end
+        end
+        return index
+    end
+    local icon = label == "EUI Mount" and C_Spell.GetSpellTexture(64657) or 134400 -- White Kodo
+    local ok, created = pcall(CreateMacro, label, icon, body, not account)
     if ok and created and created > 0 then return created end
-    print("Shaman bars: could not create macro " .. label .. " (character macro slots full?).")
+    print("Shaman bars: could not create macro " .. label .. " (macro slots full?).")
 end
 
 local function ReadSlot(slot)
@@ -212,14 +265,8 @@ end
 
 ns.MoveBarAction = Move
 
+-- low-frequency extras on unbound Bar 6; counter totems and Call sets are in the plans now
 local utilities = {
-    { 39, "3", "Grounding Totem", { 8177 } },
-    { 40, "4", "Tremor Totem", { 8143 } },
-    { 41, "5", "Poison Cleansing Totem", { 8166 } },
-    { 58, "Ctrl+V", "Disease Cleansing Totem", { 8170 } },
-    { 60, "Ctrl+Mouse 4", "Healing Stream Totem", { 10463, 10462, 6377, 6375, 5394 } },
-    { 147, "Bar 6 / 3", "Call of the Ancestors", { 66843 } },
-    { 148, "Bar 6 / 4", "Call of the Spirits", { 66844 } },
     { 151, "Bar 6 / 7", "Fire Resistance Totem", { 10538, 10537, 8184 } },
     { 152, "Bar 6 / 8", "Frost Resistance Totem", { 10479, 10478, 8181 } },
     { 154, "Bar 6 / 10", "Nature Resistance Totem", { 10601, 10600, 10595 } },
@@ -446,9 +493,11 @@ end
 local function ApplyPreset(spec)
     -- create addon macros first: creating one can renumber the others
     local learnedNow = ns.LearnedBarRanks(ns.KnownBarSpells())
-    for _, entry in pairs(plans[spec]) do
-        local name = entry[1] ~= 0 and C_Spell.GetSpellName(entry[1]) or entry[2]
-        if entry[4] and (entry[1] == 0 or learnedNow[name]) then ns.EnsureAddonMacro(entry[4], name, learnedNow) end
+    for _, entries in ipairs({ shared, plans[spec] }) do
+        for _, entry in pairs(entries) do
+            local name = entry[1] ~= 0 and C_Spell.GetSpellName(entry[1]) or entry[2]
+            if entry[4] and (entry[1] == 0 or learnedNow[name]) then ns.EnsureAddonMacro(entry[4], name, learnedNow) end
+        end
     end
     local slots, unavailable, pickup, learned, macroLabels = ResolvePreset(spec, true)
     local skip = {}
@@ -459,7 +508,7 @@ local function ApplyPreset(spec)
     end
 
     -- talent-only slots of each other spec; parked from bars when not learned
-    local talentSlots = { Restoration = { 2, 42, 53, 61 }, Enhancement = { 1, 61 }, Elemental = { 61 } }
+    local talentSlots = { Restoration = { 2, 61, 62, 72 }, Enhancement = { 1, 61 }, Elemental = { 61 } }
     local offSpec = {}
     for other, list in pairs(talentSlots) do
         if other ~= spec then
