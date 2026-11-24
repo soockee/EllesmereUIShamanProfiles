@@ -255,6 +255,49 @@ function ns.GetSavedBarPreset(spec)
         character._elementalPlan4 = true
     end
     if elemental and elemental[53] == "spell|408510|spell|" then elemental[53] = "spell|10432|spell|" end
+    -- best drink on Alt+1 (slot 47) in every saved preset, if that key is free
+    if character and not character._drinkShortcut then
+        for _, presetSpec in ipairs({ "Elemental", "Enhancement", "Restoration" }) do
+            local preset = character[presetSpec]
+            if preset and (not preset[47] or preset[47] == "") then preset[47] = "macro|1|item|EUI Best Drink" end
+        end
+        character._drinkShortcut = true
+    end
+    -- on-use trinkets on Shift+1 / Shift+2 (slots 42 / 43) in every saved preset, if those keys are free
+    if character and not character._trinketShortcuts then
+        for _, presetSpec in ipairs({ "Elemental", "Enhancement", "Restoration" }) do
+            local preset = character[presetSpec]
+            if preset then
+                if not preset[42] or preset[42] == "" then preset[42] = "macro|1|item|EUI Trinket 1" end
+                if not preset[43] or preset[43] == "" then preset[43] = "macro|1|item|EUI Trinket 2" end
+            end
+        end
+        character._trinketShortcuts = true
+    end
+    -- Restoration had a spell on Alt+1: move it to a free Bar 6 / 7 slot and take the key for the drink
+    local restoration = character and character.Restoration
+    if restoration and not character._restoDrink then
+        local old = restoration[47]
+        if old and old ~= "" and old ~= "macro|1|item|EUI Best Drink" then
+            local spot
+            for s = 145, 168 do if not spot and (not restoration[s] or restoration[s] == "") then spot = s end end
+            if spot then restoration[spot] = old end
+        end
+        restoration[47] = "macro|1|item|EUI Best Drink"
+        character._restoDrink = true
+    end
+    -- rank 2 Lightning Bolt on E for Clearcasting; Frost Shock moved to Shift+E
+    if elemental and not character._elementalLBFish2 then
+        elemental[2] = "macro|15208|spell|EUI LB Fish"
+        elemental[62] = "macro|10473|spell|EUI Frost Shock"
+        character._elementalLBFish2 = true
+    end
+    -- Q and F are plain spells again (no /stopcasting); F glows on Clearcasting instead
+    if elemental and not character._elementalPlainCasts then
+        if elemental[1] == "macro|15208|spell|EUI Bolt Max" then elemental[1] = "spell|15208|spell|" end
+        if elemental[5] == "macro|10605|spell|EUI Chain Max" then elemental[5] = "spell|10605|spell|" end
+        character._elementalPlainCasts = true
+    end
     if elemental and not character._elementalFocusMacro then
         elemental[12] = "macro|1||EUI Focus" -- Mouse 4
         character._elementalFocusMacro = true
@@ -668,12 +711,12 @@ function ns.ApplyCapturedBarLayout(slots, label, remember)
                 local own = ns.IsAddonMacro(name) and GetMacroIndexByName(name)
                 if own and own > 0 then
                     macros[action] = { index = own, label = name, spell = spell, any = true }
-                elseif remember and name == "EUI Best Mana" and subtype == "item" then
-                    local index, reason = ns.EnsureBestManaMacro()
+                elseif remember and ns.ItemMacroLabel(name) and subtype == "item" then
+                    local index, reason = ns.EnsureItemMacro(name)
                     if index then
                         macros[Normalize(action)] = { index = index, label = name }
                     else
-                        print("Shaman bars: mana potion key skipped. " .. reason)
+                        print("Shaman bars: " .. name .. " key skipped. " .. reason)
                     end
                 elseif macro and macro.label == name then
                     action = "macro|" .. (macro.id or id) .. "|spell|" .. name

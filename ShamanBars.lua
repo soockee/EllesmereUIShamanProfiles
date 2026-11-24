@@ -24,7 +24,7 @@ local shared = {
     [58] = { 8170, "Disease Cleansing Totem" },     -- Ctrl+V
     [11] = { 8177, "Grounding Totem" },             -- Mouse 5: eat an enemy cast
     [57] = { 2645, "Ghost Wolf" },                  -- Ctrl+C
-    [60] = { 0, "Mount", false, "EUI Mount" },      -- Ctrl+Mouse 4: random favorite mount
+    [60] = { 0, "Mount", false, "EUI Mount" },      -- Shift+Space and Ctrl+Mouse 4: random favorite mount
     -- healing area (mouseover, else friendly target, else you)
     [37] = { 25357, "Healing Wave", false, "EUI Heal Wave" },        -- 1
     [39] = { 526, "Cure Poison", false, "EUI Cure Poison" },         -- 3
@@ -66,11 +66,12 @@ local plans = {
     -- WoW Forever (Icy Veins / ConquestCapped, Nov 2026): ST Searing Totem > Flame Shock > Lightning Mastery
     -- > Chain Lightning (Clearcasting) > Lightning Bolt; AoE Magma Totem > Chain Lightning > Fire Nova.
     Elemental = {
-        [1] = { 15208, "Lightning Bolt" },             -- Q
-        [2] = { 10473, "Frost Shock", false, "EUI Frost Shock" },      -- E: rank 1 slow / kite
+        [1] = { 15208, "Lightning Bolt" },             -- Q: plain, spammable
+        [2] = { 15208, "Lightning Bolt", false, "EUI LB Fish" },       -- E: rank 2 filler, fish for Clearcasting
+        [62] = { 10473, "Frost Shock", false, "EUI Frost Shock" },     -- Shift+E: rank 1 slow / kite
         [3] = { 29228, "Flame Shock", false, "EUI Flame Shock" },      -- R: mouseover, else target
         [4] = { 408345, "Fire Nova" },                 -- T
-        [5] = { 10605, "Chain Lightning" },            -- F
+        [5] = { 10605, "Chain Lightning" },            -- F: plain; glows on Clearcasting (ShamanGlow.lua)
         [38] = { 10468, "Lesser Healing Wave", false, "EUI Lesser Heal" }, -- 2: healing area
         [61] = { 16166, "Lightning Mastery", false, "EUI Burst" }, -- Shift+Q: trinket + racial + Lightning Mastery
         [72] = { 10432, "Lightning Shield" },          -- Shift+Mouse 4 (Water Shield is a Restoration talent)
@@ -78,7 +79,7 @@ local plans = {
 }
 -- old keys the layout empties (single buff totems leave keys; moved spells leave their old key)
 local layoutClear = {
-    Elemental = { 25, 26, 27, 52, 53, 60, 62, 64, 69, 147, 148 },
+    Elemental = { 25, 26, 27, 52, 53, 60, 64, 69, 147, 148 },
     Enhancement = { 25, 26, 27, 51, 52, 53, 60, 62, 69, 147, 148 },
     Restoration = { 25, 26, 27, 31, 32, 38, 53, 60, 69, 147, 148 }, -- 38: key 2 would copy R
 }
@@ -190,17 +191,18 @@ local help = "#showtooltip %s\n/cast [@mouseover,help,nodead][help,nodead][@play
 local addonMacros = {
     ["EUI Flame Shock"] = "#showtooltip %s\n/cast [@mouseover,harm,nodead][] %s",
     ["EUI Frost Shock"] = "#showtooltip %s(Rank 1)\n/cast [@mouseover,harm,nodead][] %s(Rank 1)",
-    ["EUI Focus Shock"] = "#showtooltip %s(Rank 1)\n/cast [@focus,harm,nodead][] %s(Rank 1)",
+    ["EUI LB Fish"] = "#showtooltip %s(Rank 2)\n/cast %s(Rank 2)",
+    ["EUI Focus Shock"] ="#showtooltip %s(Rank 1)\n/cast [@focus,harm,nodead][] %s(Rank 1)",
     ["EUI HW Rank 7"] = "#showtooltip %s(Rank 7)\n/cast [@mouseover,help,nodead][help,nodead][@player] %s(Rank 7)",
     ["EUI CH Rank 1"] = "#showtooltip %s(Rank 1)\n/cast [@mouseover,help,nodead][help,nodead][@player] %s(Rank 1)",
     ["EUI Burst"] = "#showtooltip %s\n/use 13\n%s/cast %s",
     ["EUI Enh Burst"] = "#showtooltip %s\n/use 13\n%s/cast %s",
     -- no spell: plan entries with spell id 0 use it as is
-    ["EUI Focus"] = "/focus [@mouseover,exists,nodead][]",
+    ["EUI Focus"] = "#showtooltip\n/focus [@mouseover,exists,nodead][]",
     -- random favorite mount (all mounts if none is a favorite); dismounts when mounted, leaves Ghost Wolf
     ["EUI Mount"] = C_MountJournal and C_MountJournal.SummonByID
-        and "/cancelform [form]\n/run if IsMounted() then Dismount() else C_MountJournal.SummonByID(0) end"
-        or "/cancelform [form]\n/dismount [mounted]\n/cast [nomounted] White Kodo",
+        and "#showtooltip\n/cancelform [form]\n/run if IsMounted() then Dismount() else C_MountJournal.SummonByID(0) end"
+        or "#showtooltip White Kodo\n/cancelform [form]\n/dismount [mounted]\n/cast [nomounted] White Kodo",
 }
 -- Account macros: mouseover, else friendly target, else yourself (Purge: else hostile target)
 local accountMacros = {
@@ -230,16 +232,19 @@ function ns.EnsureAddonMacro(label, spell, learned)
     else
         body = (addonMacros[label] or accountMacros[label]):format(spell, spell)
     end
+    -- spell-less macros get a fixed icon (#showtooltip has no spell to show); 134400 = dynamic "?" icon
+    local fixed = (label == "EUI Mount" and C_Spell.GetSpellTexture(64657))  -- White Kodo
+        or (label == "EUI Focus" and C_Spell.GetSpellTexture(1130))           -- Hunter's Mark crosshair
+    local icon = fixed or 134400
     if index and index > 0 then
         -- keep our macros current (e.g. the rank 1 interrupt); other account macros are never touched
         local _, _, old = GetMacroInfo(index)
         if (account or index > (GetNumMacros())) and old and strtrim(old) ~= body then
-            local ok, edited = pcall(EditMacro, index, nil, nil, body)
+            local ok, edited = pcall(EditMacro, index, nil, fixed or nil, body)
             if ok and edited then return edited end
         end
         return index
     end
-    local icon = label == "EUI Mount" and C_Spell.GetSpellTexture(64657) or 134400 -- White Kodo
     local ok, created = pcall(CreateMacro, label, icon, body, not account)
     if ok and created and created > 0 then return created end
     print("Shaman bars: could not create macro " .. label .. " (macro slots full?).")
@@ -555,8 +560,12 @@ function ns.RunBarCommand(msg, selectedPreset)
         ns.RunTotemCommand()
         return
     end
+    if mode == "binds" then
+        if ns.ApplyGameBinds then ns.ApplyGameBinds() end
+        return
+    end
     if mode ~= "apply" and mode ~= "undo" and mode ~= "utility" and mode ~= "unutility" then
-        Report("Shaman bars: use /shamanbars apply, undo, utility, unutility, or totems.")
+        Report("Shaman bars: use /shamanbars apply, undo, utility, unutility, totems, or binds.")
         return
     end
     local active = ns.ActiveTree()

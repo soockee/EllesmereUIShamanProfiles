@@ -7,4 +7,6 @@ ShamanProfiles.lua
 ShamanBars.lua
 ShamanTransfer.lua
 ShamanItems.lua
+ShamanPicker.lua
 ShamanKeyboard.lua
+ShamanGlow.lua

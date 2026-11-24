@@ -17,13 +17,38 @@ local options = {
             { 3827, 520 }, { 3385, 320 }, { 2455, 160 },
         },
     },
+    -- best first; conjured (mage) before bought at the same tier. shortcut: classic values, recheck if Forever changes drinks
+    {
+        name = "EUI Best Drink", label = "Best drink",
+        drinks = {
+            8079,                 -- Conjured Crystal Water: top-tier mana, ahead of the bought biscuits
+            19301, 13724,         -- Alterac / Enriched Manna Biscuit
+            8766, 19300,          -- Morning Glory Dew, Bottled Winterspring Water
+            8078, 1645,           -- Conjured Sparkling Water, Moonberry Juice
+            8077, 1708,           -- Conjured Mineral Water, Sweet Nectar
+            3772, 1205,           -- Conjured Spring Water, Melon Juice
+            2136, 1179,           -- Conjured Purified Water, Ice Cold Milk
+            2288, 5350, 159,      -- Conjured Fresh Water, Conjured Water, Refreshing Spring Water
+        },
+    },
     { name = "EUI Trinket 1", label = "Upper trinket", slot = 13 },
     { name = "EUI Trinket 2", label = "Lower trinket", slot = 14 },
 }
 local icon = 134400
 
 local function MacroBody(option)
-    if option.slot then return "#showtooltip\n/use " .. option.slot end
+    if option.slot then return "#showtooltip " .. option.slot .. "\n/use " .. option.slot end -- icon of the equipped trinket
+    if option.drinks then
+        -- one line only: a second /use would cancel the first drink
+        local level = UnitLevel("player")
+        for _, id in ipairs(option.drinks) do
+            local required = select(5, C_Item.GetItemInfo(id))
+            if C_Item.GetItemCount(id) > 0 and (required or 0) <= level then
+                return "#showtooltip\n/use item:" .. id
+            end
+        end
+        return "#showtooltip\n/use item:" .. option.drinks[1]
+    end
     local max = option.restored == 282011 and UnitHealthMax("player") or UnitPowerMax("player", Enum.PowerType.Mana)
     if (issecretvalue and issecretvalue(max)) or type(max) ~= "number" then return end
     local amount = max * option.percent / 100
@@ -42,9 +67,12 @@ end
 -- ours if it only holds #showtooltip and this option's potion lines (any order or set from older versions)
 local function IsOurBody(option, previous, current)
     if previous == current then return true end
-    if not previous or not option.ranks then return false end
-    local allowed = { [option.restored] = true }
-    for _, rank in ipairs(option.ranks) do allowed[rank[1]] = true end
+    if option.slot then return previous == "#showtooltip\n/use " .. option.slot end -- older trinket body
+    if not previous or not (option.ranks or option.drinks) then return false end
+    local allowed = {}
+    if option.restored then allowed[option.restored] = true end
+    for _, rank in ipairs(option.ranks or {}) do allowed[rank[1]] = true end
+    for _, id in ipairs(option.drinks or {}) do allowed[id] = true end
     local items = 0
     for line in previous:gmatch("[^\r\n]+") do
         local id = tonumber(strtrim(line):match("^/use item:(%d+)$"))
@@ -76,21 +104,27 @@ local function UpdateMacro(option, create)
     if create then return CreateMacro(option.name, icon, body, true) end
 end
 
-function ns.EnsureBestManaMacro()
+-- create or update a potion / drink macro by name (saved presets placing EUI Best Mana / EUI Best Drink)
+function ns.EnsureItemMacro(name)
     if InCombatLockdown() or GetCursorInfo() then return nil, "Leave combat and empty your cursor." end
-    local ok, index, reason = pcall(UpdateMacro, options[2], true)
-    if ok and index and index > 0 then return index end
-    return nil, reason or "WoW could not create or update the best mana potion macro."
+    for _, option in ipairs(options) do
+        if option.name == name then
+            local ok, index, reason = pcall(UpdateMacro, option, true)
+            if ok and index and index > 0 then return index end
+            return nil, reason or ("WoW could not create or update " .. name .. ".")
+        end
+    end
 end
 
 local function RefreshPotions()
     if InCombatLockdown() then return end
-    for i = 1, 2 do pcall(UpdateMacro, options[i], false) end
+    for i = 1, 3 do pcall(UpdateMacro, options[i], false) end
 end
 
 local events = CreateFrame("Frame")
 events:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
 events:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+events:RegisterEvent("BAG_UPDATE_DELAYED") -- drinks bought, conjured or used up
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:SetScript("OnEvent", RefreshPotions)
